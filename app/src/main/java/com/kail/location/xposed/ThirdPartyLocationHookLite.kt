@@ -27,7 +27,7 @@ internal object ThirdPartyLocationHookLite {
                 if (!FakeLocState.isEnabled()) return
                 val cmd = param.args.getOrNull(0) as? String
                 val extras = param.args.getOrNull(1) as? Bundle
-                XposedLog.i("AMap onSendExtraCommand cmd=$cmd extras=$extras")
+                XposedBridge.log("KAIL_XPOSED: 高德 onSendExtraCommand 命令=$cmd 附加=$extras")
                 param.result = false
             }
         })
@@ -82,7 +82,7 @@ internal object ThirdPartyLocationHookLite {
                     XposedHelpers.callMethod(bdLoc, "setLongitude", loc.longitude)
                     XposedHelpers.callMethod(bdLoc, "setBuildingID", "")
                     XposedHelpers.callMethod(bdLoc, "setAddrStr", "")
-                    XposedLog.i("Baidu requestNLPNormal injected lat=${loc.latitude} lon=${loc.longitude}")
+                    XposedBridge.log("KAIL_XPOSED: 百度 requestNLPNormal 注入位置 纬度=${loc.latitude} 经度=${loc.longitude}")
                 }
             }
         })

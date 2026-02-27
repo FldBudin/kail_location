@@ -25,13 +25,10 @@ internal object XposedLog {
     }
 
     private fun write(level: String, message: String, t: Throwable?) {
-        // 1. Log to XposedBridge and Android Log
         val logMsg = "[$level] $message"
         kotlin.runCatching {
             XposedBridge.log("$TAG: $logMsg")
             if (t != null) XposedBridge.log(t)
-        }
-        kotlin.runCatching {
             if (level == "E") {
                 Log.e(TAG, message, t)
             } else {
@@ -39,7 +36,6 @@ internal object XposedLog {
             }
         }
 
-        // 2. Log to File
         val path = resolvePath() ?: "/data/local/tmp/kail_location_xposed.log"
         val now = kotlin.runCatching { sdf.format(Date()) }.getOrNull() ?: ""
         val sb = StringBuilder()

@@ -25,7 +25,7 @@ internal object LocationServiceHookLite {
             classLoader
         )
         if (cLms != null) {
-            XposedLog.i("hook LocationManagerService")
+            XposedLog.i("hook系统定位服务")
             onService(cLms)
         }
     }
@@ -33,7 +33,7 @@ internal object LocationServiceHookLite {
     private fun hookServiceV2(classLoader: ClassLoader) {
         val cStub = XposedHelpers.findClassIfExists("android.location.ILocationManager\$Stub", classLoader)
         if (cStub == null) {
-            XposedLog.e("ILocationManager\$Stub not found")
+            XposedBridge.log("KAIL_XPOSED: ILocationManager\$Stub not found")
             return
         }
         val descriptor = kotlin.runCatching {
@@ -43,7 +43,7 @@ internal object LocationServiceHookLite {
             XposedHelpers.getStaticIntField(cStub, "TRANSACTION_sendExtraCommand")
         }.getOrNull()
 
-        XposedLog.i("hook ILocationManager onTransact desc=${descriptor ?: ""} txSendExtraCommand=${txSendExtraCommand ?: -1}")
+        XposedBridge.log("KAIL_XPOSED: hook ILocationManager onTransact desc=${descriptor ?: ""} txSendExtraCommand=${txSendExtraCommand ?: -1}")
 
         val hookedOnce = AtomicBoolean(false)
         cStub.declaredMethods.forEach { m ->
@@ -81,7 +81,7 @@ internal object LocationServiceHookLite {
                         }
 
                         if (provider == "portal" && extras != null && KailCommandHandler.handle(provider, command, extras)) {
-                            XposedLog.i("portal onTransact handled: ${command ?: ""}")
+                            XposedBridge.log("KAIL_XPOSED: PORTAL事务已处理：${command ?: ""}")
                             reply.writeNoException()
                             // Android 11 (R, API 30) changed sendExtraCommand to return void in AIDL
                             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -104,7 +104,7 @@ internal object LocationServiceHookLite {
     }
 
     private fun onService(cService: Class<*>) {
-        XposedLog.i("onService class=${cService.name}")
+        XposedBridge.log("KAIL_XPOSED: 定位服务已hook class=${cService.name}")
         hookSendExtraCommand(cService)
         hookGetLastLocation(cService)
         hookIsProviderEnabled(cService)
@@ -126,7 +126,11 @@ internal object LocationServiceHookLite {
                 if (callingUid <= 0) return
 
                 if (KailCommandHandler.handle(provider, command, out)) {
+                    val cmdId = out?.getString("command_id")
+                    XposedBridge.log("KAIL_XPOSED: PORTAL接收：onSendExtraCommand 调用方uid=$callingUid 命令ID=$cmdId 密钥或命令=$command")
                     param.result = true
+                } else {
+                    XposedBridge.log("KAIL_XPOSED: PORTAL接收：onSendExtraCommand 未处理 调用方uid=$callingUid 密钥或命令=$command")
                 }
             }
         })
@@ -184,14 +188,14 @@ internal object LocationServiceHookLite {
         val hook = object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam?) {
                 if (param == null) return
-                XposedLog.i("requestLocationUpdates called args=${param.args.joinToString()}")
+                XposedBridge.log("KAIL_XPOSED: 调用 requestLocationUpdates 参数=${param.args.joinToString()}")
                 val listener = param.args.filterIsInstance<IInterface>().firstOrNull()
                 if (listener != null) {
-                    XposedLog.i("found listener: ${listener.javaClass.name}")
+                    XposedBridge.log("KAIL_XPOSED: 找到监听器：${listener.javaClass.name}")
                     locationListeners.add(listener)
                     hookListener(listener)
                 } else {
-                    XposedLog.i("no IInterface listener found in args")
+                    XposedBridge.log("KAIL_XPOSED: 未找到 IInterface 监听器")
                 }
             }
         }
@@ -262,20 +266,20 @@ internal object LocationServiceHookLite {
         XposedBridge.hookAllMethods(clz, "onLocationChanged", object : XC_MethodHook() {
             override fun beforeHookedMethod(param: MethodHookParam?) {
                 if (param == null) {
-                    XposedLog.e("hookListener: param is null")
+                    XposedBridge.log("KAIL_XPOSED: hookListener：参数为空")
                     return
                 }
                 if (!FakeLocState.isEnabled()) return
                 if (param.args.isEmpty()) return
-                XposedLog.i("onLocationChanged called on listener")
+                XposedBridge.log("KAIL_XPOSED: 监听器收到 onLocationChanged")
                 val first = param.args[0]
                 when (first) {
                     is Location -> {
-                        XposedLog.i("injecting single location")
+                        XposedBridge.log("KAIL_XPOSED: 注入单个位置")
                         param.args[0] = FakeLocState.injectInto(first)
                     }
                     is List<*> -> {
-                        XposedLog.i("injecting list location")
+                        XposedBridge.log("KAIL_XPOSED: 注入位置列表")
                         val list = first.filterIsInstance<Location>()
                         param.args[0] = list.map { FakeLocState.injectInto(it) }
                     }

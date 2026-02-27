@@ -255,6 +255,9 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
         intent.putExtra(ServiceGo.EXTRA_ROUTE_SPEED, settings.value.speed)
         intent.putExtra(ServiceGo.EXTRA_COORD_TYPE, ServiceGo.COORD_BD09)
         intent.putExtra(ServiceGo.EXTRA_RUN_MODE, runMode.value)
+        intent.putExtra(ServiceGo.EXTRA_SPEED_FLUCTUATION, settings.value.speedFluctuation)
+        intent.putExtra(ServiceGo.EXTRA_STEP_ENABLED, settings.value.stepFreqSimulation)
+        intent.putExtra(ServiceGo.EXTRA_STEP_FREQ, settings.value.stepFreq)
         ContextCompat.startForegroundService(app, intent)
         _isSimulating.value = true
         _isPaused.value = false
@@ -296,19 +299,58 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
         val prefs = PreferenceManager.getDefaultSharedPreferences(getApplication())
         val speed = prefs.getFloat("route_sim_speed", _settings.value.speed)
         val loop = prefs.getBoolean("route_sim_loop", _settings.value.isLoop)
-        _settings.value = _settings.value.copy(speed = speed, isLoop = loop)
+        val speedFluctuation = prefs.getBoolean("route_sim_speed_fluctuation", _settings.value.speedFluctuation)
+        val stepEnabled = prefs.getBoolean("route_sim_step_enabled", _settings.value.stepFreqSimulation)
+        val stepFreq = prefs.getFloat("route_sim_step_freq", _settings.value.stepFreq)
+        _settings.value = _settings.value.copy(speed = speed, isLoop = loop, speedFluctuation = speedFluctuation, stepFreqSimulation = stepEnabled, stepFreq = stepFreq)
     }
 
     fun updateSpeed(speed: Float) {
         _settings.value = _settings.value.copy(speed = speed)
         PreferenceManager.getDefaultSharedPreferences(getApplication())
             .edit().putFloat("route_sim_speed", speed).apply()
+        if (_isSimulating.value) {
+            val app = getApplication<Application>()
+            val intent = Intent(app, ServiceGo::class.java)
+            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_SPEED)
+            intent.putExtra(ServiceGo.EXTRA_ROUTE_SPEED, speed)
+            app.startService(intent)
+        }
     }
 
     fun updateLoop(loop: Boolean) {
         _settings.value = _settings.value.copy(isLoop = loop)
         PreferenceManager.getDefaultSharedPreferences(getApplication())
             .edit().putBoolean("route_sim_loop", loop).apply()
+    }
+
+    fun updateSpeedFluctuation(enabled: Boolean) {
+        _settings.value = _settings.value.copy(speedFluctuation = enabled)
+        PreferenceManager.getDefaultSharedPreferences(getApplication())
+            .edit().putBoolean("route_sim_speed_fluctuation", enabled).apply()
+        if (_isSimulating.value) {
+            val app = getApplication<Application>()
+            val intent = Intent(app, ServiceGo::class.java)
+            intent.putExtra(ServiceGo.EXTRA_CONTROL_ACTION, ServiceGo.CONTROL_SET_SPEED_FLUCTUATION)
+            intent.putExtra(ServiceGo.EXTRA_SPEED_FLUCTUATION, enabled)
+            app.startService(intent)
+        }
+    }
+
+    fun updateStepFreqSimulation(enabled: Boolean) {
+        _settings.value = _settings.value.copy(stepFreqSimulation = enabled)
+        PreferenceManager.getDefaultSharedPreferences(getApplication())
+            .edit().putBoolean("route_sim_step_enabled", enabled).apply()
+    }
+
+    fun updateStepFreq(freq: Float) {
+        _settings.value = _settings.value.copy(stepFreq = freq)
+        PreferenceManager.getDefaultSharedPreferences(getApplication())
+            .edit().putFloat("route_sim_step_freq", freq).apply()
+    }
+
+    fun updateMode(mode: com.kail.location.models.TransportMode) {
+        _settings.value = _settings.value.copy(mode = mode)
     }
 
     /**

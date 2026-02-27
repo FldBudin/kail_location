@@ -28,6 +28,8 @@ import com.kail.location.views.joystick.JoyStick
 import kotlin.math.abs
 import kotlin.math.cos
 import com.kail.location.utils.MapUtils
+import com.kail.location.geo.GeoMath
+import com.kail.location.geo.GeoPredict
 
 /**
  * 前台定位模拟服务。
@@ -65,6 +67,9 @@ class ServiceGo : Service() {
     private var portalRandomKey: String? = null
     private var portalStarted: Boolean = false
     private var locationLoopStarted: Boolean = false
+    private var stepEnabledCache: Boolean = false
+    private var stepFreqCache: Double = 0.0
+    private var speedFluctuation: Boolean = false
 
     companion object {
         const val DEFAULT_LAT = 36.667662
@@ -88,11 +93,16 @@ class ServiceGo : Service() {
         const val EXTRA_COORD_TYPE = "EXTRA_COORD_TYPE"
         const val EXTRA_RUN_MODE = "EXTRA_RUN_MODE"
         const val EXTRA_CONTROL_ACTION = "EXTRA_CONTROL_ACTION"
+        const val EXTRA_SPEED_FLUCTUATION = "EXTRA_SPEED_FLUCTUATION"
         const val EXTRA_SEEK_RATIO = "EXTRA_SEEK_RATIO"
+        const val EXTRA_STEP_ENABLED = "EXTRA_STEP_ENABLED"
+        const val EXTRA_STEP_FREQ = "EXTRA_STEP_FREQ"
         const val CONTROL_PAUSE = "pause"
         const val CONTROL_RESUME = "resume"
         const val CONTROL_STOP = "stop"
         const val CONTROL_SEEK = "seek"
+        const val CONTROL_SET_SPEED = "set_speed"
+        const val CONTROL_SET_SPEED_FLUCTUATION = "set_speed_fluctuation"
         const val COORD_WGS84 = "WGS84"
         const val COORD_BD09 = "BD09"
         const val COORD_GCJ02 = "GCJ02"
@@ -103,6 +113,9 @@ class ServiceGo : Service() {
         private const val PORTAL_PROVIDER = "portal"
     }
 
+    /**
+     * 广播当前模拟状态（是否正在模拟、是否暂停）到应用内，供界面刷新。
+     */
     private fun broadcastStatus() {
         val intent = Intent(ACTION_STATUS_CHANGED)
         intent.putExtra(EXTRA_IS_SIMULATING, locationLoopStarted && !isStop)
@@ -121,6 +134,14 @@ class ServiceGo : Service() {
         return mBinder
     }
 
+    /**
+     * 服务创建时的初始化流程：
+     * - 初始化并启动前台通知
+     * - 初始化 LocationManager
+     * - 初始化定位线程与 Handler
+     * - 初始化摇杆并根据权限显示/隐藏
+     * 最后广播初始状态供界面监听。
+     */
     override fun onCreate() {
         super.onCreate()
         Log.i("ServiceGo", "ServiceGo: onCreate started")
@@ -252,8 +273,8 @@ class ServiceGo : Service() {
                                 val a = mRoutePoints[mRouteIndex]
                                 val b = mRoutePoints[(mRouteIndex + 1).coerceAtMost(mRoutePoints.size - 1)]
                                 val midLat = (a.second + b.second) / 2.0
-                                val metersPerDegLat = 110.574 * 1000.0
-                                val metersPerDegLng = 111.320 * 1000.0 * kotlin.math.cos(kotlin.math.abs(midLat) * Math.PI / 180.0)
+                                val metersPerDegLat = GeoMath.metersPerDegLat(midLat)
+                                val metersPerDegLng = GeoMath.metersPerDegLng(midLat)
                                 val dLatDeg2 = b.second - a.second
                                 val dLngDeg2 = b.first - a.first
                                 val segLenMeters = kotlin.math.sqrt((dLatDeg2 * metersPerDegLat) * (dLatDeg2 * metersPerDegLat) + (dLngDeg2 * metersPerDegLng) * (dLngDeg2 * metersPerDegLng))
@@ -262,7 +283,7 @@ class ServiceGo : Service() {
                                 val dLatDeg = b.second - a.second
                                 mCurLng = a.first + dLngDeg * f
                                 mCurLat = a.second + dLatDeg * f
-                                mCurBea = bearingDegrees(a.first, a.second, b.first, b.second)
+                                mCurBea = GeoMath.bearingDegrees(a.first, a.second, b.first, b.second)
                                 updateJoystickStatus()
                                 Log.i("ServiceGo", "ServiceGo: seek to ratio=$ratio index=$mRouteIndex progress=$mSegmentProgressMeters")
                             }
@@ -271,8 +292,34 @@ class ServiceGo : Service() {
                         }
                         return super.onStartCommand(intent, flags, startId)
                     }
+                    CONTROL_SET_SPEED -> {
+                        try {
+                            val kmh = intent.getFloatExtra(EXTRA_ROUTE_SPEED, (mSpeed * 3.6).toFloat())
+                            mSpeed = kmh.toDouble() / 3.6
+                            if (mRunMode == "root") {
+                                portalStartIfNeeded()
+                                portalSend("set_speed") { putFloat("speed", mSpeed.toFloat()) }
+                            }
+                            Log.i("ServiceGo", "ServiceGo: speed updated to km/h=$kmh m/s=$mSpeed")
+                        } catch (e: Exception) {
+                            Log.e("ServiceGo", "ServiceGo: set_speed error", e)
+                        }
+                        return super.onStartCommand(intent, flags, startId)
+                    }
+                    CONTROL_SET_SPEED_FLUCTUATION -> {
+                        try {
+                            speedFluctuation = intent.getBooleanExtra(EXTRA_SPEED_FLUCTUATION, speedFluctuation)
+                            Log.i("ServiceGo", "ServiceGo: speedFluctuation updated to $speedFluctuation")
+                        } catch (e: Exception) {
+                            Log.e("ServiceGo", "ServiceGo: set_speed_fluctuation error", e)
+                        }
+                        return super.onStartCommand(intent, flags, startId)
+                    }
                 }
             }
+            stepEnabledCache = intent.getBooleanExtra(EXTRA_STEP_ENABLED, false)
+            stepFreqCache = intent.getFloatExtra(EXTRA_STEP_FREQ, 0f).toDouble()
+            speedFluctuation = intent.getBooleanExtra(EXTRA_SPEED_FLUCTUATION, false)
         }
         // Ensure startForeground is called to prevent crash (ForegroundServiceDidNotStartInTimeException)
         // even if onCreate was skipped (service already running)
@@ -342,9 +389,9 @@ class ServiceGo : Service() {
             
             Log.i("ServiceGo", "ServiceGo: onStartCommand received lat=$mCurLat, lng=$mCurLng, runMode=$mRunMode")
 
-            if (mRunMode != "root") {
-                ensureNorootProviders()
-            } else {
+            // Always ensure providers so third-party SDKs (e.g., Baidu) can receive GPS/Network updates
+            ensureNorootProviders()
+            if (mRunMode == "root") {
                 portalInitIfNeeded()
                 portalStartIfNeeded()
                 portalUpdateOnce()
@@ -502,12 +549,9 @@ class ServiceGo : Service() {
         mJoyStick.setListener(object : JoyStick.JoyStickClickListener {
             override fun onMoveInfo(speed: Double, disLng: Double, disLat: Double, angle: Double) {
                 mSpeed = speed
-                // 根据当前的经纬度和距离，计算下一个经纬度
-                // Latitude: 1 deg = 110.574 km // 纬度的每度的距离大约为 110.574km
-                // Longitude: 1 deg = 111.320*cos(latitude) km  // 经度的每度的距离从0km到111km不等
-                // 具体见：http://wp.mlab.tw/?p=2200
-                mCurLng += disLng / (111.320 * cos(abs(mCurLat) * Math.PI / 180))
-                mCurLat += disLat / 110.574
+                val next = GeoPredict.nextByDisplacementKm(mCurLng, mCurLat, disLng, disLat)
+                mCurLng = next.first
+                mCurLat = next.second
                 mCurBea = angle.toFloat()
             }
 
@@ -554,14 +598,24 @@ class ServiceGo : Service() {
 
                     if (!isStop) {
                         if (mRoutePoints.size >= 2) {
-                            advanceAlongRoute(mSpeed * 0.1)
+                            val speedForStep = if (speedFluctuation) {
+                                GeoPredict.randomInRangeWithMean(mSpeed * 0.5, mSpeed * 1.5, mSpeed)
+                            } else {
+                                mSpeed
+                            }
+                            advanceAlongRoute(speedForStep * 0.1)
                             updateJoystickStatus()
                         }
                         if (mRunMode == "root") {
                             portalTick()
-                        } else {
-                            setLocationNetwork()
-                            setLocationGPS()
+                        }
+                        setLocationNetwork()
+                        setLocationGPS()
+                        if (mRunMode == "root" && mRoutePoints.size >= 2) {
+                            Log.i(
+                                "ServiceGo",
+                                "ROOT路线更新：纬度=$mCurLat，经度=$mCurLng，速度(m/s)=$mSpeed，航向(度)=$mCurBea，段索引=$mRouteIndex，段进度(米)=$mSegmentProgressMeters"
+                            )
                         }
 
                         sendEmptyMessage(HANDLER_MSG_ID)
@@ -580,6 +634,11 @@ class ServiceGo : Service() {
         }
     }
 
+    /**
+     * 启动定位循环：
+     * - 将 isStop 置为 false
+     * - 发送首个 Handler 消息，进入 100ms 周期的更新循环
+     */
     private fun startLocationLoop() {
         if (locationLoopStarted) return
         if (!this::mLocHandler.isInitialized) return
@@ -588,6 +647,10 @@ class ServiceGo : Service() {
         mLocHandler.sendEmptyMessage(HANDLER_MSG_ID)
     }
 
+    /**
+     * 确保系统 GPS/Network TestProvider 已添加并启用（先移除再添加）。
+     * 第三方定位 SDK（如百度）依赖系统 Provider 才能接收位置更新。
+     */
     private fun ensureNorootProviders() {
         try {
             removeTestProviderNetwork()
@@ -599,6 +662,11 @@ class ServiceGo : Service() {
         }
     }
 
+    /**
+     * 初始化 portal 命令通道：
+     * - 通过 sendExtraCommand("portal", "exchange_key") 交换随机 key
+     * - 成功后缓存 key 供后续命令使用
+     */
     private fun portalInitIfNeeded(): Boolean {
         if (portalRandomKey != null) return true
         val rely = Bundle()
@@ -622,18 +690,32 @@ class ServiceGo : Service() {
         return true
     }
 
+    /**
+     * 通过 portal 通道发送命令：
+     * - 使用交换得到的 key 作为 command
+     * - 写入 command_id 与参数到 Bundle
+     */
     private fun portalSend(commandId: String, block: Bundle.() -> Unit = {}): Boolean {
         val key = portalRandomKey ?: return false
         val rely = Bundle()
         rely.putString("command_id", commandId)
         rely.block()
-        return kotlin.runCatching {
+        Log.i("ServiceGo", "PORTAL发送：cmd=$commandId，内容=$rely")
+        val ok = kotlin.runCatching {
             mLocManager.sendExtraCommand(PORTAL_PROVIDER, key, rely)
         }.onFailure {
              Log.e("ServiceGo", "ServiceGo: portalSend exception command=$commandId", it)
         }.getOrDefault(false)
+        Log.i("ServiceGo", "PORTAL结果：cmd=$commandId，ok=$ok")
+        return ok
     }
 
+    /**
+     * 启动 Xposed 侧模拟引擎（仅一次）：
+     * - 若未初始化先交换 key
+     * - 发送 start 命令（速度/海拔/精度）
+     * - 同步步频设置
+     */
     private fun portalStartIfNeeded(): Boolean {
         if (portalStarted) return true
         if (!portalInitIfNeeded()) {
@@ -648,12 +730,18 @@ class ServiceGo : Service() {
         if (ok) {
             Log.i("ServiceGo", "ServiceGo: portal start command success")
             portalStarted = true
+            portalSend("set_step_enabled") { putBoolean("enabled", stepEnabledCache) }
+            portalSend("set_step_cadence") { putFloat("cadence", stepFreqCache.toFloat()) }
         } else {
             Log.e("ServiceGo", "ServiceGo: portal start command failed")
         }
         return ok
     }
 
+    /**
+     * 启动后立即同步一次状态到 Xposed：
+     * - set_altitude / set_speed / set_bearing / update_location / broadcast_location
+     */
     private fun portalUpdateOnce() {
         if (!portalStartIfNeeded()) {
             Log.e("ServiceGo", "ServiceGo: portalUpdateOnce failed because start failed")
@@ -670,6 +758,9 @@ class ServiceGo : Service() {
         portalSend("broadcast_location")
     }
 
+    /**
+     * 循环周期内向 Xposed 下发最新速度、朝向与位置并广播。
+     */
     private fun portalTick() {
         if (!portalStartIfNeeded()) return
         portalSend("set_speed") { putFloat("speed", mSpeed.toFloat()) }
@@ -682,6 +773,11 @@ class ServiceGo : Service() {
         portalSend("broadcast_location")
     }
 
+    
+
+    /**
+     * 安全停止 Xposed 侧模拟引擎并清理状态。
+     */
     private fun portalStopSafe() {
         kotlin.runCatching {
             portalSend("stop")
@@ -690,6 +786,12 @@ class ServiceGo : Service() {
         portalRandomKey = null
     }
 
+    /**
+     * 按给定距离推进路线：
+     * - 在当前路段上累积进度，满段切换下一段
+     * - 线性插值当前位置与方位角
+     * - 处理循环/非循环的结束逻辑
+     */
     private fun advanceAlongRoute(distanceMeters: Double) {
         var remaining = distanceMeters
         while (remaining > 0 && mRoutePoints.size >= 2) {
@@ -710,8 +812,8 @@ class ServiceGo : Service() {
             val a = mRoutePoints[startIdx]
             val b = mRoutePoints[endIdx]
             val midLat = (a.second + b.second) / 2.0
-            val metersPerDegLat = 110.574 * 1000.0
-            val metersPerDegLng = 111.320 * 1000.0 * kotlin.math.cos(kotlin.math.abs(midLat) * Math.PI / 180.0)
+            val metersPerDegLat = GeoMath.metersPerDegLat(midLat)
+            val metersPerDegLng = GeoMath.metersPerDegLng(midLat)
             val dLatDeg = b.second - a.second
             val dLngDeg = b.first - a.first
             val segLenMeters = kotlin.math.sqrt((dLatDeg * metersPerDegLat) * (dLatDeg * metersPerDegLat) + (dLngDeg * metersPerDegLng) * (dLngDeg * metersPerDegLng))
@@ -733,7 +835,7 @@ class ServiceGo : Service() {
             if (remaining >= available) {
                 mCurLng = b.first
                 mCurLat = b.second
-                mCurBea = bearingDegrees(a.first, a.second, b.first, b.second)
+                mCurBea = GeoMath.bearingDegrees(a.first, a.second, b.first, b.second)
                 remaining -= available
                 mRouteIndex++
                 mSegmentProgressMeters = 0.0
@@ -751,12 +853,15 @@ class ServiceGo : Service() {
                 val f = mSegmentProgressMeters / segLenMeters
                 mCurLng = a.first + dLngDeg * f
                 mCurLat = a.second + dLatDeg * f
-                mCurBea = bearingDegrees(a.first, a.second, b.first, b.second)
+                mCurBea = GeoMath.bearingDegrees(a.first, a.second, b.first, b.second)
                 remaining = 0.0
             }
         }
     }
 
+    /**
+     * 预计算路线累计距离数组与总距离，供进度与 Seek 使用。
+     */
     private fun calculateRouteDistances() {
         mRouteCumulativeDistances.clear()
         mRouteCumulativeDistances.add(0.0)
@@ -776,6 +881,9 @@ class ServiceGo : Service() {
         mTotalDistance = total
     }
 
+    /**
+     * 更新摇杆悬浮窗的路线进度与当前位置展示。
+     */
     private fun updateJoystickStatus() {
         if (this::mJoyStick.isInitialized && mRoutePoints.isNotEmpty()) {
             val currentDist = if (mRouteIndex < mRouteCumulativeDistances.size)
@@ -795,15 +903,10 @@ class ServiceGo : Service() {
         }
     }
 
-    private fun bearingDegrees(lng1: Double, lat1: Double, lng2: Double, lat2: Double): Float {
-        val dLng = Math.toRadians(lng2 - lng1)
-        val rLat1 = Math.toRadians(lat1)
-        val rLat2 = Math.toRadians(lat2)
-        val y = kotlin.math.sin(dLng) * kotlin.math.cos(rLat2)
-        val x = kotlin.math.cos(rLat1) * kotlin.math.sin(rLat2) - kotlin.math.sin(rLat1) * kotlin.math.cos(rLat2) * kotlin.math.cos(dLng)
-        val brng = Math.atan2(y, x)
-        return Math.toDegrees(brng).toFloat()
-    }
+    /**
+     * 计算两点之间的方位角（单位：度）。
+     */
+    // bearingDegrees moved to GeoMath
 
     /**
      * 移除 GPS 测试提供者。

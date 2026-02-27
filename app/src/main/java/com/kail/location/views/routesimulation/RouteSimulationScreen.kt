@@ -233,7 +233,14 @@ fun RouteSimulationScreen(
         SettingsDialog(
             settings = settings,
             onDismiss = { showSettingsDialog = false },
-            onSettingsChange = { viewModel.updateSpeed(it.speed); if (settings.isLoop != it.isLoop) viewModel.updateLoop(it.isLoop) }
+            onSettingsChange = {
+                if (settings.speed != it.speed) viewModel.updateSpeed(it.speed)
+                if (settings.isLoop != it.isLoop) viewModel.updateLoop(it.isLoop)
+                if (settings.speedFluctuation != it.speedFluctuation) viewModel.updateSpeedFluctuation(it.speedFluctuation)
+                if (settings.stepFreqSimulation != it.stepFreqSimulation) viewModel.updateStepFreqSimulation(it.stepFreqSimulation)
+                if (settings.stepFreq != it.stepFreq) viewModel.updateStepFreq(it.stepFreq)
+                if (settings.mode != it.mode) viewModel.updateMode(it.mode)
+            }
         )
     }
 
@@ -470,7 +477,7 @@ fun SettingsDialog(
                 Slider(
                     value = settings.speed,
                     onValueChange = { onSettingsChange(settings.copy(speed = (it * 10).toInt() / 10f)) },
-                    valueRange = 0f..30f,
+                    valueRange = 0f..120f,
                     colors = SliderDefaults.colors(
                         thumbColor = MaterialTheme.colorScheme.primary,
                         activeTrackColor = MaterialTheme.colorScheme.primary
@@ -516,7 +523,50 @@ fun SettingsDialog(
                     )
                 }
 
-                // 移除步频相关UI
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("步频模拟", fontSize = 14.sp, color = Color.Black)
+                    Switch(
+                        checked = settings.stepFreqSimulation,
+                        onCheckedChange = { onSettingsChange(settings.copy(stepFreqSimulation = it)) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.scale(0.8f)
+                    )
+                }
+
+                if (settings.stepFreqSimulation) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val stride = when (settings.mode) {
+                        TransportMode.Walk -> 0.7f
+                        TransportMode.Run -> 1.0f
+                        else -> 0.8f
+                    }
+                    val kmh = (settings.stepFreq * stride * 3.6f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("步频", fontSize = 14.sp, color = Color.Black)
+                        Text("${((settings.stepFreq * 10).toInt() / 10f)} 步/秒 · 约 ${((kmh * 10).toInt() / 10f)} km/h", fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Slider(
+                        value = settings.stepFreq,
+                        onValueChange = { onSettingsChange(settings.copy(stepFreq = (it * 10).toInt() / 10f)) },
+                        valueRange = 0.5f..4.0f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
         }
     }

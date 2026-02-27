@@ -1,8 +1,8 @@
 package com.kail.location.xposed
 
+import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.IXposedHookZygoteInit
-import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -10,8 +10,7 @@ class FakeLocationXposed : IXposedHookLoadPackage, IXposedHookZygoteInit {
     private val firstHandleRef = AtomicBoolean(false)
 
     override fun initZygote(startupParam: IXposedHookZygoteInit.StartupParam?) {
-        XposedBridge.log("KAIL_XPOSED: initZygote")
-        XposedLog.i("initZygote")
+        XposedBridge.log("KAIL_XPOSED: 初始化Zygote")
     }
 
     override fun handleLoadPackage(lpparam: XC_LoadPackage.LoadPackageParam?) {
@@ -31,22 +30,22 @@ class FakeLocationXposed : IXposedHookLoadPackage, IXposedHookZygoteInit {
         )
         
         if (pkg in allowedPkgs) {
-            XposedBridge.log("KAIL_XPOSED: handleLoadPackage pkg=$pkg process=$process")
+            XposedBridge.log("KAIL_XPOSED: 加载进程 pkg=$pkg process=$process")
         }
 
         if (firstHandleRef.compareAndSet(false, true)) {
-            XposedLog.i("first handleLoadPackage pkg=$pkg process=$process")
+            XposedBridge.log("KAIL_XPOSED: 首次处理加载 pkg=$pkg process=$process")
         }
         if (pkg !in allowedPkgs) return
 
         val injectedKey = "kail_location.injected_$pkg"
         if (System.getProperty(injectedKey) == "true") {
-            XposedLog.i("already injected pkg=$pkg process=$process")
+            XposedBridge.log("KAIL_XPOSED: 已注入 pkg=$pkg process=$process")
             return
         }
         System.setProperty(injectedKey, "true")
 
-        XposedBridge.log("KAIL_XPOSED: injecting pkg=$pkg process=$process")
+        XposedBridge.log("KAIL_XPOSED: 开始注入 pkg=$pkg process=$process")
 
         val systemClassLoader = kotlin.runCatching {
             val atClz = kotlin.runCatching {
@@ -58,12 +57,14 @@ class FakeLocationXposed : IXposedHookLoadPackage, IXposedHookZygoteInit {
 
         kotlin.runCatching {
             val cl = systemClassLoader ?: lpparam.classLoader
-            XposedLog.i("hook init pkg=$pkg process=$process")
+            XposedBridge.log("KAIL_XPOSED: 开始hook pkg=$pkg process=$process")
             LocationServiceHookLite.hook(cl)
             ThirdPartyLocationHookLite.hook(cl)
-            XposedLog.i("hook ready")
+            SensorHookLite.hook(cl)
+            XposedBridge.log("KAIL_XPOSED: hook完成")
         }.onFailure {
-            XposedLog.e("hook failed", it)
+            XposedBridge.log("KAIL_XPOSED: hook失败")
+            XposedBridge.log(it)
         }
     }
 }
