@@ -192,12 +192,7 @@ fun RoutePlanScreen(
                         
                         endPoint = "${target.latitude},${target.longitude}"
                         currentAnchor = target
-                        try {
-                            mapView?.map?.setMapStatus(MapStatusUpdateFactory.newMapStatus(MapStatus.Builder().target(target).zoom(15f).build()))
-                            Log.i("RoutePlanScreen", "Finalize waypoint ${waypoints.size} -> $target")
-                        } catch (e: Exception) {
-                            Log.e("RoutePlanScreen", "Map init error", e)
-                        }
+                        Log.i("RoutePlanScreen", "Finalize waypoint ${waypoints.size} -> $target")
                     }
                 })
             } else {
