@@ -7,7 +7,6 @@ import androidx.preference.PreferenceManager
 import com.kail.location.viewmodels.SettingsViewModel
 import java.io.File
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
 
@@ -16,14 +15,13 @@ import java.util.concurrent.Executors
  * 支持高频与低频日志区分。
  * 高频日志仅在控制台输出；低频日志在控制台输出，并根据设置保存到公共目录文件。
  * 同时读取 logcat 中的 NativeHook 日志并合并保存。
+ * 注意：不能在非标准线程中使用 SimpleDateFormat，避免 ICU 崩溃
  */
 object KailLog {
     private const val TAG_PREFIX = "KailLog_"
     private const val NATIVE_TAG = "NativeHook"
     private const val HIGH_FREQ_LIMIT = 100
     private val logExecutor = Executors.newSingleThreadExecutor()
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-    private val fileNameFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private var logcatThread: Thread? = null
     private var nativeHighFreqCount = 0
 
@@ -60,7 +58,10 @@ object KailLog {
         }
         
         try {
-            val fileName = "kail_log_${fileNameFormat.format(Date())}.txt"
+            // 使用 System.currentTimeMillis() 避免 ICU 崩溃
+            val ts = System.currentTimeMillis()
+            val day = ts / 86400000
+            val fileName = "kail_log_${day}.txt"
             val publicDir = File("/sdcard/Documents/KailLocation/logs")
             if (!publicDir.exists()) {
                 publicDir.mkdirs()
@@ -161,13 +162,16 @@ object KailLog {
     /**
      * 将日志保存到外部存储的公共目录（Documents/KailLocation/logs）
      * 仅使用硬编码路径以避开 Environment API 在系统进程中的限制。
+     * 注意：不能在非标准线程（如 native hook 线程）中使用 SimpleDateFormat
      */
     private fun saveLogToPublicFile(tag: String, message: String, level: Char) {
         logExecutor.execute {
             try {
-                val timeStamp = dateFormat.format(Date())
-                val fileName = "kail_log_${fileNameFormat.format(Date())}.txt"
-                val logEntry = "$timeStamp [${level.uppercaseChar()}] [$tag]: $message\n"
+                // 使用 System.currentTimeMillis() 代替 SimpleDateFormat，避免 ICU 崩溃
+                val ts = System.currentTimeMillis()
+                val day = ts / 86400000  // 简单日期
+                val fileName = "kail_log_${day}.txt"
+                val logEntry = "$ts [${level.uppercaseChar()}] [$tag]: $message\n"
                 
                 // 仅使用硬编码公共路径
                 val publicDir = File("/sdcard/Documents/KailLocation/logs")
@@ -181,9 +185,10 @@ object KailLog {
                 }
             } catch (e: Exception) {
                 // 如果常规写入失败（常见于权限问题），尝试使用 su 兜底
-                val timeStamp = dateFormat.format(Date())
-                val fileName = "kail_log_${fileNameFormat.format(Date())}.txt"
-                val logEntry = "$timeStamp [${level.uppercaseChar()}] [$tag]: $message\n"
+                val ts = System.currentTimeMillis()
+                val day = ts / 86400000
+                val fileName = "kail_log_${day}.txt"
+                val logEntry = "$ts [${level.uppercaseChar()}] [$tag]: $message\n"
                 suAppend("/sdcard/Documents/KailLocation/logs/$fileName", logEntry)
             }
         }
