@@ -1,6 +1,8 @@
 Route & Location Simulation，
 Cadence simulation
 
+[Sensor parameters](传感器参数.md)
+
 [中文说明](README.md) | [English README](README_EN.md)
 
 The logs are located at /storage/emulated/0/Documents/KailLocation/logs/
