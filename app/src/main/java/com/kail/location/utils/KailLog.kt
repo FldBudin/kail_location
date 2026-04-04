@@ -14,67 +14,12 @@ import java.util.concurrent.Executors
  * KailLog 专门用于日志输出与保存。
  * 支持高频与低频日志区分。
  * 高频日志仅在控制台输出；低频日志在控制台输出，并根据设置保存到公共目录文件。
- * 同时读取 logcat 中的 NativeHook 日志并合并保存。
  * 注意：不能在非标准线程中使用 SimpleDateFormat，避免 ICU 崩溃
  */
 object KailLog {
     private const val TAG_PREFIX = "KailLog_"
-    private const val NATIVE_TAG = "NativeHook"
     private const val HIGH_FREQ_LIMIT = 100
     private val logExecutor = Executors.newSingleThreadExecutor()
-    private var logcatThread: Thread? = null
-    private var nativeHighFreqCount = 0
-
-    init {
-        startLogcatReader()
-    }
-
-    private fun startLogcatReader() {
-        logcatThread = Thread {
-            try {
-                // Read all levels (D, I, W, E) for NativeHook
-                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "-s", "$NATIVE_TAG:D"))
-                process.inputStream.bufferedReader().use { reader ->
-                    reader.forEachLine { line ->
-                        if (line.contains(NATIVE_TAG)) {
-                            saveNativeLog(line)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
-        logcatThread?.start()
-    }
-
-    private fun saveNativeLog(line: String) {
-        // Limit high-frequency logs (ACCEL data)
-        if (line.contains("ACCEL") || line.contains("LINEAR_ACCEL")) {
-            nativeHighFreqCount++
-            if (nativeHighFreqCount > HIGH_FREQ_LIMIT) {
-                return // Skip saving
-            }
-        }
-        
-        try {
-            // 使用 System.currentTimeMillis() 避免 ICU 崩溃
-            val ts = System.currentTimeMillis()
-            val day = ts / 86400000
-            val fileName = "kail_log_${day}.txt"
-            val publicDir = File("/sdcard/Documents/KailLocation/logs")
-            if (!publicDir.exists()) {
-                publicDir.mkdirs()
-            }
-            val logFile = File(publicDir, fileName)
-            FileOutputStream(logFile, true).use { fos ->
-                val prefix = if (nativeHighFreqCount > HIGH_FREQ_LIMIT) "[skipped] " else ""
-                fos.write("$prefix$line\n".toByteArray())
-            }
-        } catch (e: Exception) {
-            // Ignore
-        }
-    }
 
     /**
      * 输出日志。

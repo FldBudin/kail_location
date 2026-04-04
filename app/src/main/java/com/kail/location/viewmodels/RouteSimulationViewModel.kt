@@ -95,7 +95,7 @@ class RouteSimulationViewModel(application: Application) : AndroidViewModel(appl
     }
     
     init {
-        _runMode.value = sharedPreferences.getString("setting_run_mode", "root") ?: "root"
+        _runMode.value = sharedPreferences.getString("setting_run_mode", "noroot") ?: "noroot"
         loadSettings()
         loadRoutes()
 
