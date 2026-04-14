@@ -118,13 +118,18 @@ extern "C" void hooked_convert_to_sensor_event(void* param_1, void* param_2) {
 
     int sensor_type = *(int*)((char*)param_2 + 0x08);
     ALOGI("convertToSensorEvent: type=%d", sensor_type);
+    ALOGI("vars: SDT=%d, SSD=%d, SCT=%d, SSC=%d, isMocking=%d", 
+        stepdetectorTrigger, mSensorHandleStepDetector, 
+        stepcounterTrigger, mSensorHandleStepCounter, isMocking);
 
     if (sensor_type == SENSOR_TYPE_STEP_DETECTOR) {
         stepdetectorTrigger = 1;
         mSensorHandleStepDetector = *(int*)((char*)param_2 + 0x04);
+        ALOGI("Got STEP_DETECTOR: handle=%d", mSensorHandleStepDetector);
     } else if (sensor_type == SENSOR_TYPE_STEP_COUNTER) {
         stepcounterTrigger = 1;
         mSensorHandleStepCounter = *(int*)((char*)param_2 + 0x04);
+        ALOGI("Got STEP_COUNTER: handle=%d", mSensorHandleStepCounter);
     } else if (sensor_type == 5) {
         if (mSensorHandleStepDetector == -1) {
             mSensorHandleStepDetector = 0;
@@ -139,7 +144,22 @@ extern "C" void hooked_convert_to_sensor_event(void* param_1, void* param_2) {
     }
 
     if ((isMocking != 0) && (sensor_type == 5)) {
-        if ((stepdetectorTrigger == 1) && (mSensorHandleStepDetector != -1)) {
+        if ((stepdetectorTrigger == 1) && (mSensorHandleStepDetector != -1) &&
+            (stepcounterTrigger == 1) && (mSensorHandleStepCounter != -1)) {
+            // 四个值都有，交替发送 18 和 19
+            static int toggle = 0;
+            if (toggle == 0) {
+                toggle = 1;
+                *(int*)((char*)param_2 + 0x04) = mSensorHandleStepDetector;
+                *(int*)((char*)param_2 + 0x08) = 0x12;
+                ALOGI("Modified to STEP_DETECTOR: handle=%d, type=0x12", mSensorHandleStepDetector);
+            } else {
+                toggle = 0;
+                *(int*)((char*)param_2 + 0x04) = mSensorHandleStepCounter;
+                *(int*)((char*)param_2 + 0x08) = 0x13;
+                ALOGI("Modified to STEP_COUNTER: handle=%d, type=0x13", mSensorHandleStepCounter);
+            }
+        } else if ((stepdetectorTrigger == 1) && (mSensorHandleStepDetector != -1)) {
             stepdetectorTrigger = 0;
             *(int*)((char*)param_2 + 0x04) = mSensorHandleStepDetector;
             *(int*)((char*)param_2 + 0x08) = 0x12;
@@ -148,7 +168,6 @@ extern "C" void hooked_convert_to_sensor_event(void* param_1, void* param_2) {
             stepcounterTrigger = 0;
             *(int*)((char*)param_2 + 0x04) = mSensorHandleStepCounter;
             *(int*)((char*)param_2 + 0x08) = 0x13;
-            *(int64_t*)((char*)param_2 + 0x18) = 0;
             ALOGI("Modified to STEP_COUNTER: handle=%d, type=0x13", mSensorHandleStepCounter);
         } else {
             stepdetectorTrigger = 1;
