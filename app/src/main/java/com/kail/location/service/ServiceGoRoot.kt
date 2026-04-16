@@ -645,6 +645,10 @@ class ServiceGoRoot : Service() {
                 KailLog.i(this, "ServiceGoRoot", ">>> chmod result: $chmodResult")
                 val chconResult = com.kail.location.utils.ShellUtils.executeCommand("chcon u:object_r:system_file:s0 ${soFile.absolutePath}")
                 KailLog.i(this, "ServiceGoRoot", ">>> chcon result: $chconResult")
+                
+                KailLog.i(this, "ServiceGoRoot", ">>> Restoring SELinux to enforcing mode")
+                val selinuxRestoreResult = com.kail.location.utils.ShellUtils.executeCommand("setenforce 1")
+                KailLog.i(this, "ServiceGoRoot", ">>> setenforce 1 result: $selinuxRestoreResult")
             } else {
                 KailLog.e(this, "ServiceGoRoot", ">>> apkSoFile does NOT exist!")
             }
@@ -681,6 +685,8 @@ class ServiceGoRoot : Service() {
         return loadResult
     }
 
+
+
     private fun getOffsetsFromSystem(): Pair<String, String> {
         val commands = listOf("toybox readelf", "readelf")
         
@@ -689,13 +695,22 @@ class ServiceGoRoot : Service() {
                 KailLog.i(this, "ServiceGoRoot", ">>> Trying command: $cmd")
                 val sensorOut = com.kail.location.utils.ShellUtils.executeCommand("$cmd -Ws /system/lib64/libsensor.so 2>/dev/null | grep _ZN7android7BitTube11sendObjects")
                 val sensorServiceOut = com.kail.location.utils.ShellUtils.executeCommand("$cmd -Ws /system/lib64/libsensorservice.so 2>/dev/null | grep _ZN7android8hardware7sensors14implementation20convertToSensorEvent")
+                val sensorServiceV1Out = com.kail.location.utils.ShellUtils.executeCommand("$cmd -Ws /system/lib64/libsensorservice.so 2>/dev/null | grep _ZN7android8hardware7sensors4V1_014implementation20convertToSensorEvent")
                 
                 KailLog.i(this, "ServiceGoRoot", ">>> sensorOut: $sensorOut")
                 KailLog.i(this, "ServiceGoRoot", ">>> sensorServiceOut: $sensorServiceOut")
+                KailLog.i(this, "ServiceGoRoot", ">>> sensorServiceV1Out: $sensorServiceV1Out")
                 
-                if (sensorOut.isNotEmpty() && sensorServiceOut.isNotEmpty()) {
+                if (sensorOut.isNotEmpty()) {
                     val sensorOffset = sensorOut.trim().split(":").getOrNull(1)?.trim()?.split(" ")?.getOrNull(0)?.trim() ?: ""
-                    val sensorServiceOffset = sensorServiceOut.trim().split(":").getOrNull(1)?.trim()?.split(" ")?.getOrNull(0)?.trim() ?: ""
+                    
+                    var sensorServiceOffset = ""
+                    if (sensorServiceOut.isNotEmpty()) {
+                        sensorServiceOffset = sensorServiceOut.trim().split(":").getOrNull(1)?.trim()?.split(" ")?.getOrNull(0)?.trim() ?: ""
+                    } else if (sensorServiceV1Out.isNotEmpty()) {
+                        sensorServiceOffset = sensorServiceV1Out.trim().split(":").getOrNull(1)?.trim()?.split(" ")?.getOrNull(0)?.trim() ?: ""
+                    }
+                    
                     if (sensorOffset.isNotEmpty() && sensorServiceOffset.isNotEmpty()) {
                         val finalSensorOffset = if (sensorOffset.startsWith("0x")) sensorOffset else "0x$sensorOffset"
                         val finalSensorServiceOffset = if (sensorServiceOffset.startsWith("0x")) sensorServiceOffset else "0x$sensorServiceOffset"

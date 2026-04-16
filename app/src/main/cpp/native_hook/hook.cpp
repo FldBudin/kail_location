@@ -167,26 +167,31 @@ extern "C" void hooked_convert_to_sensor_event(void* param_1, void* param_2) {
                 step_event_counter++;
                 *(int*)((char*)param_2 + 0x04) = mSensorHandleStepDetector;
                 *(int*)((char*)param_2 + 0x08) = 0x12;
+                *(float*)((char*)param_2 + 0x18) = 1.0f;
             } else {
                 step_event_counter = 0;
                 *(int*)((char*)param_2 + 0x04) = mSensorHandleStepCounter;
                 *(int*)((char*)param_2 + 0x08) = 0x13;
+                *(uint64_t*)((char*)param_2 + 0x18) = 0;
             }
         } else if ((stepdetectorTrigger == 1) && (mSensorHandleStepDetector != -1)) {
             stepdetectorTrigger = 0;
             *(int*)((char*)param_2 + 0x04) = mSensorHandleStepDetector;
             *(int*)((char*)param_2 + 0x08) = 0x12;
+            *(float*)((char*)param_2 + 0x18) = 1.0f;
         } else if ((stepcounterTrigger == 1) && (mSensorHandleStepCounter != -1)) {
             stepcounterTrigger = 0;
             *(int*)((char*)param_2 + 0x04) = mSensorHandleStepCounter;
             *(int*)((char*)param_2 + 0x08) = 0x13;
+            *(uint64_t*)((char*)param_2 + 0x18) = 0;
         } else {
             stepdetectorTrigger = 1;
             mSensorHandleStepDetector = 0;
             *(int*)((char*)param_2 + 0x04) = 0;
             *(int*)((char*)param_2 + 0x08) = 0x12;
+            *(float*)((char*)param_2 + 0x18) = 1.0f;
         }
-}
+    }
 }
 
 static void install_send_objects_hook() {
