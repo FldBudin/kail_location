@@ -67,6 +67,9 @@ class LocationSimulationActivity : BaseActivity() {
                             R.id.nav_navigation_simulation -> {
                                 startActivity(Intent(this, NavigationSimulationActivity::class.java))
                             }
+                            R.id.nav_nfc_simulation -> {
+                                startActivity(Intent(this, com.kail.location.views.nfcsimulation.NfcSimulationActivity::class.java))
+                            }
                             R.id.nav_settings -> {
                                 startActivity(Intent(this, SettingsActivity::class.java))
                             }

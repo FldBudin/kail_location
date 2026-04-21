@@ -87,6 +87,9 @@ class RouteSimulationActivity : BaseActivity(), SensorEventListener {
                         R.id.nav_navigation_simulation -> {
                             startActivity(Intent(this@RouteSimulationActivity, NavigationSimulationActivity::class.java))
                         }
+                        R.id.nav_nfc_simulation -> {
+                            startActivity(Intent(this@RouteSimulationActivity, com.kail.location.views.nfcsimulation.NfcSimulationActivity::class.java))
+                        }
                         R.id.nav_settings -> {
                             startActivity(Intent(this@RouteSimulationActivity, SettingsActivity::class.java))
                         }

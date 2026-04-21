@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -114,6 +115,13 @@ fun AppDrawer(
             icon = { Icon(Icons.Default.Search, contentDescription = null) },
             selected = currentScreen == "NavigationSimulation",
             onClick = { scope.launch { drawerState.close(); onNavigate(R.id.nav_navigation_simulation) } }
+        )
+
+        NavigationDrawerItem(
+            label = { Text("NFC模拟") },
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            selected = currentScreen == "NfcSimulation",
+            onClick = { scope.launch { drawerState.close(); onNavigate(R.id.nav_nfc_simulation) } }
         )
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

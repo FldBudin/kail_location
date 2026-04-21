@@ -796,10 +796,8 @@ class ServiceGoRoot : Service() {
         val lat = mCurLat
         val lng = mCurLng
         val bearing = mCurBea.toDouble()
-        
-        KailLog.log(this, "ServiceGoRoot", "Portal Tick: lat=$lat, lng=$lng, speed=$speedToSet", isHighFrequency = true)
-
-        // Use ThreadPool to send commands without blocking main loop
+//        KailLog.log(this, "ServiceGoRoot", "Portal Tick: lat=$lat, lng=$lng, speed=$speedToSet", isHighFrequency = true)
+// Use ThreadPool to send commands without blocking main loop
         val key = portalRandomKey ?: return
         val locMgr = mLocManager
         val provider = PORTAL_PROVIDER
